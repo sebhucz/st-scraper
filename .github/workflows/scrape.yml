@@ -31,6 +31,13 @@ jobs:
         run: |
           python stooq_profile_scraper.py
 
+      - name: Upload debug HTML (if present)
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-profile
+          path: data/debug_profile.html
+          if-no-files-found: ignore
+          
       - name: Commit and push profile files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
