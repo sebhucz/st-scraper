@@ -28,26 +28,38 @@ logging.basicConfig(
 )
 
 
+import pandas as pd
+from io import StringIO
+
 def fetch_stooq_data(symbol: str) -> pd.DataFrame:
-    """Pobiera dane z serwisu stooq.pl i zwraca je jako DataFrame."""
-    url = f"https://stooq.pl/q/d/?s={symbol}&c=0"
+    """
+    Pobiera dane z głównej strony notowania (q/p/?s=...) serwisu stooq.pl.
+    Zwraca tabelę z cenami i wskaźnikami jako DataFrame.
+    """
+    url = f"https://stooq.pl/q/p/?s={symbol}"
     headers = {"User-Agent": USER_AGENT}
 
     logging.info(f"Pobieram dane z {url}")
     response = requests.get(url, headers=headers, timeout=10)
     response.raise_for_status()
 
-    # Spróbuj wczytać jako CSV
-    try:
-        df = pd.read_csv(pd.compat.StringIO(response.text))
-    except Exception:
-        # Niektóre wersje Pandas nie mają już pd.compat
-        from io import StringIO
-        df = pd.read_csv(StringIO(response.text))
+    # Zapisz HTML do debugowania
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    (OUTPUT_DIR / "debug.html").write_text(response.text)
 
-    logging.info(f"Pobrano {len(df)} wierszy dla {symbol}")
+    # Spróbuj odczytać wszystkie tabele z HTML
+    tables = pd.read_html(response.text)
+    if not tables:
+        raise ValueError("Nie znaleziono żadnych tabel w HTML — możliwa zmiana struktury strony.")
+
+    # Na stronie są zwykle dwie tabele: notowania i wskaźniki
+    logging.info(f"Znaleziono {len(tables)} tabel, pierwsza ma {len(tables[0])} wierszy.")
+
+    # Możesz wybrać np. pierwszą tabelę (główne dane)
+    df = tables[0]
+
+    logging.info(f"Pobrano dane dla {symbol}: {df.shape[0]} wierszy, {df.shape[1]} kolumn.")
     return df
-
 
 def save_to_csv(df: pd.DataFrame, symbol: str):
     """Zapisuje dane do pliku CSV w folderze data/."""
