@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Stooq Profile Scraper v6
+Stooq Profile Scraper v7
 Autor: Sebastian Huczek
 Cel:
-  - Pobiera opis spółki (tekst przed słowem "Źródło:") ze strony https://stooq.pl/q/p2/?s=<symbol>
-  - Działa w GitHub Actions bez Selenium
+  - Pobiera opis spółki ze strony https://stooq.pl/q/p2/?s=<symbol>
+  - Używa XPath do znalezienia tekstu po tabeli z <b>Profil</b>
+  - W razie braku wyniku używa metody zapasowej (tekst przed "Źródło:")
 """
 
 import logging
 import re
 import requests
-from bs4 import BeautifulSoup
+from lxml import html
 from pathlib import Path
 from datetime import datetime
 import time
@@ -18,7 +19,7 @@ import time
 # === KONFIGURACJA ===
 STOOQ_SYMBOL = "wod"
 OUTPUT_DIR = Path("data")
-USER_AGENT = "stooq-profile-scraper/1.3 (+https://github.com/yourusername/stooq-scraper)"
+USER_AGENT = "stooq-profile-scraper/1.5 (+https://github.com/yourusername/stooq-scraper)"
 THROTTLE_SECONDS = 2
 
 # === LOGOWANIE ===
@@ -30,36 +31,42 @@ logging.basicConfig(
 
 def fetch_company_profile(symbol: str) -> str:
     """
-    Pobiera opis spółki ze strony p2/?s=<symbol>,
-    biorąc tekst poprzedzający słowo 'Źródło:'.
+    Pobiera opis spółki za pomocą XPath (główna metoda)
+    i fallback regex (tekst przed 'Źródło:').
     """
-    url = f"https://stooq.pl/q/p/?s={symbol}"
+    url = f"https://stooq.pl/q/p2/?s={symbol}"
     headers = {"User-Agent": USER_AGENT}
 
     logging.info(f"Pobieram stronę {url}")
     r = requests.get(url, headers=headers, timeout=15)
     r.raise_for_status()
 
-    html = r.content.decode("iso-8859-2", errors="replace")
+    # Dekodowanie HTML (Stooq używa ISO-8859-2 / Windows-1250)
+    html_text = r.content.decode("iso-8859-2", errors="replace")
+    tree = html.fromstring(html_text)
 
-    # Parsujemy HTML
-    soup = BeautifulSoup(html, "lxml")
-    text = soup.get_text(" ", strip=True)
+    # --- METODA 1: XPath (dokładna) ---
+    xpath_expr = "//table[.//b[text()='Profil']]/following-sibling::text()[normalize-space()]"
+    profile_nodes = tree.xpath(xpath_expr)
 
-    # Znajdź fragment przed słowem "Źródło:"
-    match = re.search(r'(.+?)Źródło', text, flags=re.DOTALL | re.IGNORECASE)
-    if not match:
-        # zapisz do debugowania
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        (OUTPUT_DIR / "debug_profile.html").write_text(html, encoding="utf-8")
-        raise ValueError("Nie udało się znaleźć fragmentu przed 'Źródło:' — sprawdź debug_profile.html")
+    if profile_nodes:
+        profile_text = " ".join(t.strip() for t in profile_nodes)
+        logging.info(f"Znaleziono opis spółki za pomocą XPath ({len(profile_text)} znaków).")
+        return profile_text.strip()
 
-    profile_text = match.group(1).strip()
+    # --- METODA 2: Regex (fallback) ---
+    logging.warning("XPath nie zwrócił wyniku — używam fallbacku 'Źródło:'.")
+    match = re.search(r"(.+?)Źródło", html_text, flags=re.DOTALL | re.IGNORECASE)
+    if match:
+        profile_text = re.sub(r"\s+", " ", match.group(1).strip())
+        logging.info(f"Znaleziono opis spółki metodą fallback ({len(profile_text)} znaków).")
+        return profile_text
 
-    # Opcjonalne czyszczenie z resztek whitespace
-    profile_text = re.sub(r'\s+', ' ', profile_text)
-    logging.info(f"Znaleziono profil spółki ({len(profile_text)} znaków).")
-    return profile_text
+    # --- Jeśli brak wyników, zapisz debug HTML ---
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    debug_path = OUTPUT_DIR / "debug_profile.html"
+    debug_path.write_text(html_text, encoding="utf-8")
+    raise ValueError(f"Nie znaleziono opisu spółki — zapisano debug HTML: {debug_path}")
 
 def save_profile(symbol: str, text: str):
     """Zapisuje opis spółki do pliku .txt"""
@@ -71,9 +78,9 @@ def save_profile(symbol: str, text: str):
 
 def main():
     try:
-        profile = fetch_company_profile(STOOQ_SYMBOL)
-        print(f"\n=== PROFIL SPÓŁKI {STOOQ_SYMBOL.upper()} ===\n{profile}\n")
-        save_profile(STOOQ_SYMBOL, profile)
+        text = fetch_company_profile(STOOQ_SYMBOL)
+        print(f"\n=== PROFIL SPÓŁKI {STOOQ_SYMBOL.upper()} ===\n{text}\n")
+        save_profile(STOOQ_SYMBOL, text)
     except Exception as e:
         logging.exception(f"Błąd: {e}")
     finally:
