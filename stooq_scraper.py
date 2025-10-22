@@ -48,7 +48,8 @@ def fetch_stooq_data(symbol: str) -> pd.DataFrame:
     (OUTPUT_DIR / "debug.html").write_text(response.text)
 
     # Spróbuj odczytać wszystkie tabele z HTML
-    tables = pd.read_html(response.text)
+from io import StringIO
+tables = pd.read_html(StringIO(response.text))
     if not tables:
         raise ValueError("Nie znaleziono żadnych tabel w HTML — możliwa zmiana struktury strony.")
 
