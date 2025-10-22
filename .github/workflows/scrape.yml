@@ -1,13 +1,13 @@
 name: Daily Stooq Profile Scraper
 
 permissions:
-  contents: write  # ← to pozwala github-actions[bot] na commit & push
+  contents: write  # pozwala github-actions[bot] na pushowanie zmian
 
 on:
   schedule:
+    # Uruchamiaj codziennie o 07:00 UTC (8:00/9:00 czasu PL)
     - cron: '0 7 * * *'
-
-  workflow_dispatch:  # pozwala ręcznie uruchomić akcję z GitHuba
+  workflow_dispatch:  # pozwala uruchomić ręcznie z poziomu GitHuba
 
 jobs:
   scrape:
@@ -27,14 +27,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run scraper
+      - name: Run Stooq profile scraper
         run: |
-          python stooq_scraper.py
+          python stooq_profile_scraper.py
 
-      - name: Commit and push CSV files
+      - name: Commit and push profile files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/*.csv || true
-          git commit -m "Automated data update $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git add data/*.txt || true
+          git commit -m "Auto-update: profil spółki $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "Brak zmian do commitowania"
           git push
