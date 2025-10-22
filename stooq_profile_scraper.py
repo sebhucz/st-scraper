@@ -34,7 +34,7 @@ def fetch_company_profile(symbol: str) -> str:
     Pobiera opis spółki za pomocą XPath (główna metoda)
     i fallback regex (tekst przed 'Źródło:').
     """
-    url = f"https://stooq.pl/q/p2/?s={symbol}"
+    url = f"https://stooq.pl/q/p/?s={symbol}"
     headers = {"User-Agent": USER_AGENT}
 
     logging.info(f"Pobieram stronę {url}")
